@@ -185,3 +185,123 @@ void print_ascii_char_manual(unsigned char byte) {
         printf(".");
     }
 }
+
+/*
+Функция: process_file
+Назначение: Читает файл, форматирует и выводит его содержимое в шестнадцатеричном виде.
+Поддерживает смещение, ограничение по размеру и вывод ASCII символов (при -g 1).
+ */
+int process_file(const HexConfig *config, const char *filepath) {
+    // Проверяем входные указатели на валидность
+    if (config == NULL || filepath == NULL) {
+        return -1;
+    }
+
+    // Открываем целевой файл в безопасном двоичном (бинарном) режиме "rb"
+    FILE *file = fopen(filepath, "r");
+    if (file == NULL) {
+        // Если открыть файл не удалось, выводим ошибку в поток ошибок stderr
+        fprintf(stderr, "Ошибка: Не удалось открыть файл '%s'.\n", filepath);
+        return -1;
+    }
+
+    // Позиционируем указатель чтения на заданное смещение от начала файла (SEEK_SET)
+    if (config->offset > 0) {
+        // fseek возвращает ненулевое значение при ошибке (например, смещение больше файла)
+        if (fseek(file, config->offset, SEEK_SET) != 0) {
+            fprintf(stderr, "Ошибка: Не удалось перейти на смещение %ld в файле '%s'.\n", config->offset, filepath);
+            fclose(file); // Обязательно закрываем файл перед выходом
+            return -1;
+        }
+    }
+
+    // Текущее смещение от начала файла для вывода в левом столбце
+    long current_offset = config->offset;
+    
+    // Счётчик общего количества байт, которые мы уже прочитали и вывели
+    long total_bytes_read = 0;
+
+    // Выделяем динамический буфер под чтение одной полной строки вывода.
+    // Максимальный размер строки в байтах равен: количество элементов на строку * размер элемента
+    int bytes_per_line = config->items_per_line * config->group_size;
+    unsigned char *line_buffer = (unsigned char *)malloc(bytes_per_line);
+    if (line_buffer == NULL) {
+        fprintf(stderr, "Ошибка: Не удалось выделить память под буфер чтения.\n");
+        fclose(file);
+        return -1;
+    }
+
+    // Флаг для контроля завершения основного цикла чтения
+    int stop_reading = 0;
+
+    // Основной цикл чтения файла построчно
+    while (!stop_reading) {
+        // Определяем, сколько байт нам осталось прочитать с учётом лимита (-l)
+        int bytes_to_read = bytes_per_line;
+        if (config->size != -1) {
+            long remaining = config->size - total_bytes_read;
+            // Если оставшийся лимит меньше, чем вместимость одной строки, уменьшаем размер чтения
+            if (remaining < bytes_per_line) {
+                bytes_to_read = (int)remaining;
+            }
+            // Если лимит полностью исчерпан, останавливаем чтение
+            if (bytes_to_read <= 0) {
+                break;
+            }
+        }
+
+        // Читаем блок данных из файла в наш буфер строки.
+        // fread возвращает реальное количество успешно прочитанных байт
+        size_t actual_read = fread(line_buffer, 1, bytes_to_read, file);
+        
+        // Если ничего не прочитано (достигнут конец файла), завершаем цикл
+        if (actual_read == 0) {
+            break;
+        }
+
+        // 1: ВЫВОД СМЕЩЕНИЯ (АДРЕСА СТРОКИ)
+        // Смещение разрешено выводить через printf со спецификатором %x (в hex-формате, дополняя нулями до 8 знаков)
+        printf("%08lx  ", current_offset);
+
+        // 2: ВЫВОД ДАННЫХ В HEX (БАЗОВЫЙ ВАРИАНТ -g 1)
+        // Обрабатываем пока только базовый случай, когда размер группы равен 1 байту
+        if (config->group_size == 1) {
+            // Печатаем hex-представление каждого байта строки
+            for (size_t i = 0; i < actual_read; i++) {
+                print_hex_byte_manual(line_buffer[i]);
+                printf(" "); // Разделяем байты пробелом
+            }
+
+            // 3: ВЫРАВНИВАНИЕ (ПРОБЕЛЫ) ДЛЯ НЕПОЛНОЙ СТРОКИ
+            // Если это последняя строка файла и она неполная, нам нужно вывести пробелы,
+            // чтобы символьный столбец справа не съехал влево.
+            for (size_t i = actual_read; i < (size_t)bytes_per_line; i++) {
+                printf("   "); // Три пробела на каждый отсутствующий байт (2 под hex-символа + пробел-разделитель)
+            }
+
+            // ШАГ 4: СИМВОЛЬНЫЙ СТОЛБЕЦ
+            printf("| ");
+            for (size_t i = 0; i < actual_read; i++) {
+                print_ascii_char_manual(line_buffer[i]);
+            }
+        }
+
+        // Переводим курсор вывода на новую строку
+        printf("\n");
+
+        // Увеличиваем счётчики прочитанных байт и текущего смещения
+        total_bytes_read += actual_read;
+        current_offset += actual_read;
+
+        // Если прочитано меньше, чем мы запрашивали у fread, значит, достигнут конец файла
+        if (actual_read < (size_t)bytes_to_read) {
+            stop_reading = 1;
+        }
+    }
+
+    // Освобождаем выделенную память и закрываем дескриптор файла
+    free(line_buffer);
+    fclose(file);
+
+    return 0;
+}
