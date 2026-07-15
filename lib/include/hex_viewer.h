@@ -78,4 +78,10 @@ int process_file(const HexConfig *config, const char *filepath);
  */
 int process_directory(const HexConfig *config);
 
+// Вспомогательная функция ручного вывода байта в HEX формате
+void print_hex_byte_manual(unsigned char byte);
+
+// Вспомогательная функция ручного вывода ASCII-символа
+void print_ascii_char_manual(unsigned char byte);
+
 #endif // HEX_VIEWER_H
