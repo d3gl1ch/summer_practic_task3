@@ -1,3 +1,10 @@
+/*
+Файл реализации GNU getopt, адаптированный для проекта Hex-Viewer.
+
+Коликов Глеб Александрович
+МК-101
+*/
+
 /* Getopt for GNU.
 NOTE: getopt is now part of the C library, so if you don't know what
 "Keep this file name-space clean" means, talk to drepper@gnu.org
