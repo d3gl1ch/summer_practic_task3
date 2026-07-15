@@ -12,6 +12,8 @@
 #include <stdio.h>        // Подключаем стандартный ввод-вывод для printf/fprintf
 #include <stdlib.h>       // Подключаем стандартную библиотеку для функций strtol/atof
 #include <string.h>       // Подключаем библиотеку для работы со строками (strncpy, strlen)
+// Подключаем заголовочный файл для работы с директориями
+#include <dirent.h>
 
 /*
 Инициализирует структуру настроек значениями по умолчанию
@@ -340,6 +342,82 @@ int process_file(const HexConfig *config, const char *filepath) {
     // Освобождаем динамическую память и закрываем файл
     free(line_buffer);
     fclose(file);
+
+    return 0;
+}
+
+/*
+Функция: process_directory
+Назначение: Выполняет обход указанной директории и обрабатывает каждый файл в ней.
+ */
+int process_directory(const HexConfig *config) {
+    // Проверяем входной указатель на конфигурацию
+    if (config == NULL) {
+        return -1;
+    }
+
+    // Открываем директорию по пути, сохраненному в config->dir_name
+    DIR *dir = opendir(config->dir_name);
+    if (dir == NULL) {
+        // Если открыть директорию не удалось, выводим ошибку в поток stderr
+        fprintf(stderr, "Ошибка: Не удалось открыть директорию '%s'.\n", config->dir_name);
+        return -1;
+    }
+
+    // Указатель на структуру, описывающую текущий элемент директории (файл или подпапку)
+    struct dirent *entry;
+    
+    // Переменная для подсчета успешно обработанных файлов
+    int processed_files_count = 0;
+
+    // Читаем элементы директории один за другим, пока они не закончатся
+    while ((entry = readdir(dir)) != NULL) {
+        // Пропускаем служебную ссылку на саму себя "."
+        if (strcmp(entry->d_name, ".") == 0) {
+            continue;
+        }
+        // Пропускаем служебную ссылку на родительскую директорию ".."
+        if (strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        // Буфер для сборки полного пути к файлу: "путь_к_папке/имя_файла"
+        char full_filepath[MAX_PATH_LEN * 2];
+        
+        // Безопасно формируем строку пути с учетом слеша
+        // Сначала копируем имя директории
+        strncpy(full_filepath, config->dir_name, sizeof(full_filepath) - 1);
+        full_filepath[sizeof(full_filepath) - 1] = '\0';
+
+        // Проверяем, заканчивается ли имя папки на слеш, если нет — добавляем его
+        size_t dir_len = strlen(full_filepath);
+        if (dir_len > 0 && full_filepath[dir_len - 1] != '/' && full_filepath[dir_len - 1] != '\\') {
+            strncat(full_filepath, "/", sizeof(full_filepath) - dir_len - 1);
+        }
+
+        // Дописываем имя конкретного файла к пути
+        dir_len = strlen(full_filepath);
+        strncat(full_filepath, entry->d_name, sizeof(full_filepath) - dir_len - 1);
+
+        // Перед выводом содержимого файла печатаем красивый заголовок с его именем
+        printf("=== Файл: %s ===\n", entry->d_name);
+
+        // Вызываем функцию визуализации hex для сформированного файла
+        if (process_file(config, full_filepath) == 0) {
+            processed_files_count++;
+        }
+        
+        // Выводим пустую строку-разделитель между файлами для лучшей читаемости
+        printf("\n");
+    }
+
+    // Закрываем дескриптор директории и освобождаем системные ресурсы
+    closedir(dir);
+
+    // Если в папке не нашлось ни одного файла для обработки, сообщаем об этом
+    if (processed_files_count == 0) {
+        printf("В директории '%s' не найдено доступных файлов для вывода.\n", config->dir_name);
+    }
 
     return 0;
 }
